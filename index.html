@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Froggy Jumps - English Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;800&display=swap');
+
+        body {
+            font-family: 'Baloo 2', cursive;
+            touch-action: none; /* Mencegah pull-to-refresh di mobile */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #game-app {
+            background: linear-gradient(180deg, #1e3a8a 0%, #0f172a 100%);
+        }
+
+        /* Animasi mengambang untuk elemen UI */
+        .float-anim {
+            animation: floating 3s ease-in-out infinite;
+        }
+
+        @keyframes floating {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        /* Animasi pop-in untuk soal baru */
+        .pop-anim {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            80% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Shake animation untuk salah jawab */
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 flex justify-center items-center h-screen m-0 overflow-hidden">
+
+    <!-- Kontainer Utama Game (Aspect Ratio khusus mobile namun di tengah untuk desktop) -->
+    <div id="game-app" class="relative w-full max-w-md h-full overflow-hidden shadow-2xl">
+        
+        <!-- Canvas Layer untuk Animasi Game -->
+        <canvas id="gameCanvas" class="absolute top-0 left-0 w-full h-full z-10"></canvas>
+
+        <!-- UI Layer: Status Bar (Skor, Nyawa, Fullscreen) -->
+        <div id="hud" class="absolute top-0 w-full p-4 flex justify-between items-start pointer-events-none z-30 hidden">
+            <div class="flex flex-col gap-1">
+                <div class="flex gap-1 text-red-500 text-2xl drop-shadow-md" id="lives-container">
+                    ❤️ ❤️ ❤️
+                </div>
+                <div class="text-white text-lg font-bold drop-shadow-md bg-black/30 px-3 py-0.5 rounded-full inline-block w-max">
+                    Skor: <span id="score-text" class="text-green-400">0</span>
+                </div>
+            </div>
+            <button class="text-white text-xl font-bold bg-black/40 hover:bg-black/60 px-3 py-1 rounded-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition" onclick="toggleFullScreen()" title="Full Screen">
+                ⛶
+            </button>
+        </div>
+
+        <!-- UI Layer: Kotak Pertanyaan -->
+        <div id="question-box" class="absolute top-14 left-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-[0_10px_30px_rgba(0,0,0,0.5)] transform text-center z-30 hidden pointer-events-none border-4 border-b-8 border-green-500 float-anim">
+            <h2 id="question-text" class="text-lg md:text-xl font-extrabold text-gray-800 leading-tight drop-shadow-sm">What subject do you have on Monday?</h2>
+        </div>
+
+        <!-- Layar Mulai -->
+        <div id="start-screen" class="absolute inset-0 bg-gradient-to-b from-blue-900/90 to-slate-900/95 backdrop-blur-md flex flex-col justify-center items-center z-40">
+            <div class="w-32 h-32 bg-green-500 rounded-full flex justify-center items-center mb-4 shadow-[0_0_40px_rgba(34,197,94,0.6)] float-anim relative border-4 border-green-300 overflow-hidden">
+                <img src="https://imgur.com/HtFdIqB.png" alt="Frog" class="w-24 h-24 object-contain">
+            </div>
+            
+            <!-- Card Cara Bermain (Dipindahkan tepat di bawah katak) -->
+            <div class="bg-black/40 p-4 md:p-5 rounded-3xl mb-4 w-[90%] border-2 border-white/10 shadow-2xl backdrop-blur-sm text-center">
+                <h3 class="text-yellow-400 font-extrabold text-lg mb-1 drop-shadow-md">Cara Bermain:</h3>
+                <p class="text-green-300 text-[10px] font-bold mb-2 uppercase tracking-wider bg-green-900/50 inline-block px-2 py-1 rounded-md border border-green-500/50">Materi: School Subjects</p>
+                <p class="text-gray-200 text-sm leading-snug">Bantu katak melompat ke atas melalui daun dengan <b>jawaban yang tepat!</b> Awas salah pilih daun dan jatuh ke air!</p>
+            </div>
+
+            <!-- Logo Game menggantikan teks (Digeser ke bawah) -->
+            <img src="https://imgur.com/srs0bvf.png" alt="Foggy Jumps Logo" class="h-16 md:h-20 object-contain mb-2 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]">
+            
+            <!-- Ilustrasi (Digeser ke bawah) -->
+            <img src="https://imgur.com/oEOFiAh.png" alt="Ilustrasi" class="h-16 md:h-20 object-contain mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] float-anim">
+
+            <button onclick="initGame()" class="bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white font-extrabold py-3 px-12 rounded-full shadow-[0_10px_20px_rgba(34,197,94,0.4)] border-b-4 border-green-800 active:border-b-0 active:translate-y-1 transition-all text-2xl animate-[pulse_2s_ease-in-out_infinite]">
+                START
+            </button>
+        </div>
+
+        <!-- Layar Game Over -->
+        <div id="game-over-screen" class="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col justify-center items-center z-40 hidden">
+            <h1 class="text-5xl font-extrabold text-red-500 mb-2 drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]">GAME OVER</h1>
+            <p class="text-white text-2xl mb-2 mt-4 font-bold">Skor Kamu:</p>
+            <p id="final-score" class="text-6xl font-black text-green-400 mb-8 drop-shadow-[0_0_15px_rgba(34,197,94,0.6)]">0</p>
+            <button onclick="resetGame()" class="bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 px-10 rounded-full shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all text-xl mb-4">
+                MAIN LAGI
+            </button>
+        </div>
+
+        <!-- Watermark Pembuat Game -->
+        <div class="absolute bottom-2 left-3 z-50 pointer-events-none text-left leading-tight tracking-wide">
+            <p class="text-white text-sm md:text-base font-extrabold drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">Rosipah</p>
+            <p class="text-green-400 text-xs md:text-sm font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">MTsN 3 Cianjur</p>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA BANK SOAL ---
+        const questionBank = [
+            { q: "What subject do you have on Monday at 08.00?", opts: ["I have Math", "I am Math", "I do Math", "I go Math"], ans: 0 },
+            { q: "When do you have English class?", opts: ["On Tuesday", "I am Tuesday", "I do Tuesday", "I go Tuesday"], ans: 0 },
+            { q: "What time do you have Science?", opts: ["At 09.00 a.m.", "On Monday", "In the class", "With teacher"], ans: 0 },
+            { q: "Do you have PE on Friday?", opts: ["Yes, I do", "Yes, I am", "Yes, I have", "Yes, I go"], ans: 0 },
+            { q: "What subject learns about computers and technology?", opts: ["IT", "History", "Math", "Art"], ans: 0 },
+            { q: "I like painting and drawing. My favorite subject is...", opts: ["Art", "Science", "Civics", "PE"], ans: 0 },
+            { q: "When is the flag ceremony?", opts: ["On Monday", "At 07.00", "In the yard", "With teacher"], ans: 0 },
+            { q: "Do we have Geography on Wednesday?", opts: ["No, we don't", "No, we aren't", "No, it isn't", "No, I am not"], ans: 0 },
+            { q: "What do you learn in History class?", opts: ["The past", "Numbers", "Animals", "Sports"], ans: 0 },
+            { q: "What time is the first break?", opts: ["At 10.15 a.m.", "In the canteen", "On Thursday", "Eating food"], ans: 0 }
+        ];
+
+        // --- VARIABEL GLOBAL ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        
+        let score = 0;
+        let lives = 3;
+        let currentQuestion = null;
+        let availableQuestions = [];
+        let animationId;
+        
+        let frog = { x: 0, y: 0, size: 60, state: 'idle', jumpProgress: 0, startX: 0, startY: 0, targetX: 0, targetY: 0, velocityY: 0 };
+        let baseLeaf = { x: 0, y: 0, width: 160, height: 60 };
+        let optionLeaves = [];
+        let particles = [];
+        let raindrops = [];
+        
+        // Load Frog Image
+        const frogImg = new Image();
+        frogImg.src = 'https://imgur.com/HtFdIqB.png';
+        
+        let gamePhase = 'start'; // start, idle, jumping, correct_scroll, falling, gameover
+        let time = 0;
+
+        // Audio System (Sintesis Suara Tanpa Aset Eksternal)
+        let audioCtx;
+        let rainOscillator;
+
+        // --- INIT & RESIZE ---
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            width = canvas.width;
+            height = canvas.height;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            width = rect.width;
+            height = rect.height;
+
+            // Inisialisasi posisi awal katak dan daun dasar
+            if (gamePhase === 'start') {
+                baseLeaf.x = width / 2;
+                baseLeaf.y = height - 80;
+                frog.x = baseLeaf.x;
+                frog.y = baseLeaf.y - 25;
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- SISTEM AUDIO (WEB AUDIO API) ---
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playTone(freq, type, duration, vol = 0.1) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playJumpSound() { playTone(300, 'sine', 0.2); setTimeout(()=>playTone(450, 'sine', 0.2), 100); }
+        function playCorrectSound() { playTone(500, 'square', 0.1); setTimeout(()=>playTone(800, 'square', 0.2), 100); setTimeout(()=>playTone(1200, 'square', 0.3), 200); }
+        function playWrongSound() { playTone(250, 'sawtooth', 0.3); setTimeout(()=>playTone(150, 'sawtooth', 0.4), 150); }
+        function playSplashSound() { playTone(100, 'square', 0.5, 0.2); }
+
+        // --- LOGIKA GAME ---
+        function initGame() {
+            initAudio();
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('question-box').classList.remove('hidden');
+            resetGame();
+            gameLoop();
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            availableQuestions = [...questionBank];
+            updateHUD();
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('game-app').classList.remove('shake');
+            
+            baseLeaf.x = width / 2;
+            baseLeaf.y = height - 80;
+            frog.x = baseLeaf.x;
+            frog.y = baseLeaf.y - 25;
+            frog.state = 'idle';
+            frog.velocityY = 0;
+            
+            gamePhase = 'idle';
+            loadNextQuestion();
+            createRaindrops();
+        }
+
+        function loadNextQuestion() {
+            if (availableQuestions.length === 0) {
+                // Refill questions jika habis
+                availableQuestions = [...questionBank];
+            }
+            
+            // Pilih soal acak
+            const qIndex = Math.floor(Math.random() * availableQuestions.length);
+            currentQuestion = availableQuestions.splice(qIndex, 1)[0];
+            
+            document.getElementById('question-text').innerText = currentQuestion.q;
+
+            // Trigger animasi timbul (pop-in)
+            const qBox = document.getElementById('question-box');
+            qBox.classList.remove('pop-anim');
+            void qBox.offsetWidth; // trigger reflow
+            qBox.classList.add('pop-anim');
+
+            // Siapkan opsi (diacak)
+            let options = currentQuestion.opts.map((opt, i) => ({ text: opt, isCorrect: i === currentQuestion.ans }));
+            options.sort(() => Math.random() - 0.5);
+
+            // Posisi daun
+            optionLeaves = [];
+            
+            // Lebar dinamis: Dibagi 4 dikurangi sedikit jarak, minimal 75px agar tidak terlalu kecil
+            const leafW = Math.max(75, (width / 4) - 8); 
+            const leafH = 75; // Ditinggikan agar teks bisa turun ke baris bawah
+            
+            // Layout: 4 baris berjejer dari Kiri ke Kanan (Horizontal Stack)
+            const positions = [
+                { x: width * 0.125, y: height * 0.45 },
+                { x: width * 0.375, y: height * 0.45 },
+                { x: width * 0.625, y: height * 0.45 },
+                { x: width * 0.875, y: height * 0.45 }
+            ];
+
+            options.forEach((opt, i) => {
+                // Tambah sedikit offset acak vertikal agar terlihat natural (seperti daun berserakan)
+                // Offset X dikecilkan agar tidak saling bertabrakan menyamping
+                const offsetX = (Math.random() - 0.5) * 5; 
+                const offsetY = (Math.random() - 0.5) * 30;
+                optionLeaves.push({
+                    x: positions[i].x + offsetX,
+                    y: positions[i].y + offsetY,
+                    width: leafW,
+                    height: leafH,
+                    text: opt.text,
+                    isCorrect: opt.isCorrect,
+                    active: true,
+                    offsetYAnim: Math.random() * Math.PI * 2 // Untuk animasi mengambang
+                });
+            });
+        }
+
+        function updateHUD() {
+            document.getElementById('score-text').innerText = score;
+            let hearts = '';
+            for(let i=0; i<3; i++) {
+                hearts += i < lives ? '❤️ ' : '🖤 ';
+            }
+            document.getElementById('lives-container').innerText = hearts;
+        }
+
+        function gameOver() {
+            gamePhase = 'gameover';
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('question-box').classList.add('hidden');
+        }
+
+        // --- INPUT HANDLING ---
+        canvas.addEventListener('click', (e) => {
+            if (gamePhase !== 'idle') return;
+
+            const rect = canvas.getBoundingClientRect();
+            // Kalkulasi skala resolusi vs ukuran CSS
+            const scaleX = width / rect.width;
+            const scaleY = height / rect.height;
+            
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // Cek klik pada daun
+            for (let i = 0; i < optionLeaves.length; i++) {
+                const leaf = optionLeaves[i];
+                if (!leaf.active) continue;
+
+                // Simple bounding box
+                if (clickX >= leaf.x - leaf.width/2 && clickX <= leaf.x + leaf.width/2 &&
+                    clickY >= leaf.y - leaf.height/2 && clickY <= leaf.y + leaf.height/2) {
+                    
+                    // Lompat ke daun ini
+                    triggerJump(leaf);
+                    break;
+                }
+            }
+        });
+
+        function triggerJump(targetLeaf) {
+            gamePhase = 'jumping';
+            frog.state = 'jumping';
+            frog.startX = frog.x;
+            frog.startY = frog.y;
+            frog.targetX = targetLeaf.x;
+            frog.targetY = targetLeaf.y - 25;
+            frog.jumpProgress = 0;
+            frog.targetLeaf = targetLeaf;
+            playJumpSound();
+        }
+
+        // --- EFEK VISUAL ---
+        function createRaindrops() {
+            raindrops = [];
+            for (let i = 0; i < 60; i++) {
+                raindrops.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    length: Math.random() * 20 + 10,
+                    velocity: Math.random() * 10 + 15
+                });
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for(let i=0; i<20; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8 - 2,
+                    life: 1, color: color, size: Math.random()*4 + 2
+                });
+            }
+        }
+
+        function wrapText(context, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            let currentY = y;
+
+            for(let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                let metrics = context.measureText(testLine);
+                let testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    context.fillText(line, x, currentY);
+                    line = words[n] + ' ';
+                    currentY += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            context.fillText(line, x, currentY);
+        }
+
+        // --- DRAWING FUNCTIONS ---
+        function drawLeaf(ctx, x, y, w, h, text, isBase = false, offset = 0) {
+            ctx.save();
+            // Floating animation
+            let drawY = y + Math.sin(time * 3 + offset) * 5;
+            ctx.translate(x, drawY);
+
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath(); ctx.ellipse(5, 10, w/2, h/2, 0, 0, Math.PI*2); ctx.fill();
+
+            // Leaf Body
+            ctx.fillStyle = '#22C55E'; // green-500
+            ctx.strokeStyle = '#14532D'; // green-900
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Vein
+            ctx.strokeStyle = '#166534'; // green-800
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-w/2 + 10, 0);
+            ctx.lineTo(w/2 - 10, 0);
+            ctx.stroke();
+
+            // Text
+            if (text) {
+                ctx.fillStyle = 'white';
+                // Ukuran font dikecilkan dari 15px jadi 12px agar pas di daun horizontal yg lebih kecil
+                ctx.font = 'bold 12px "Baloo 2", sans-serif'; 
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 4;
+                
+                // Memperkirakan text wrapping sederhana
+                // Threshold dikecilkan (text.length > 8) agar lebih cepat pindah baris
+                if(text.length > 8) {
+                    wrapText(ctx, text, 0, -8, w - 10, 14);
+                } else {
+                    ctx.fillText(text, 0, 0);
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawFrog(ctx, x, y, size) {
+            ctx.save();
+            
+            // Tambahkan animasi mengambang agar seirama dengan daun dasar saat idle
+            let drawY = y;
+            if (frog.state === 'idle') {
+                drawY += Math.sin(time * 3) * 5;
+            }
+            
+            ctx.translate(x, drawY);
+
+            // Bayangan
+            if (frog.state === 'idle') {
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.beginPath(); ctx.ellipse(0, 5, size*0.4, size*0.15, 0, 0, Math.PI*2); ctx.fill();
+            }
+
+            // Gambar Katak dari URL
+            if (frogImg.complete) {
+                // Menggambar dari titik anchor x=0, y=0 (bawah tengah karakter)
+                // Gambar ditarik ke atas sebesar size sehingga berdiri tepat di atas titik y
+                ctx.drawImage(frogImg, -size/2, -size, size, size);
+            } else {
+                // Fallback jika gambar belum dimuat
+                ctx.fillStyle = '#4ADE80';
+                ctx.beginPath(); ctx.arc(0, -size/2, size/2, 0, Math.PI*2); ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function drawWater(ctx) {
+            ctx.fillStyle = 'rgba(14, 165, 233, 0.8)'; // light blue semi transparent
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            for(let x=0; x<=width; x+=10) {
+                // Gelombang
+                let y = height - 40 + Math.sin(x*0.02 + time*4) * 8 + Math.cos(x*0.05 + time*2) * 4;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width, height);
+            ctx.fill();
+
+            // Highlight air
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            for(let x=0; x<=width; x+=10) {
+                let y = height - 35 + Math.sin(x*0.02 + time*4 + 1) * 8;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width, height);
+            ctx.fill();
+        }
+
+        function drawEnvironment(ctx) {
+            // Hujan
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            raindrops.forEach(drop => {
+                ctx.moveTo(drop.x, drop.y);
+                ctx.lineTo(drop.x - drop.length*0.2, drop.y + drop.length);
+            });
+            ctx.stroke();
+
+            // Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            });
+        }
+
+        // --- UPDATE LOOP ---
+        function update(deltaTime) {
+            time += deltaTime;
+
+            // Update Hujan
+            raindrops.forEach(drop => {
+                drop.y += drop.velocity;
+                drop.x -= drop.velocity * 0.2; // Angin
+                if (drop.y > height) {
+                    drop.y = -20;
+                    drop.x = Math.random() * width + 50;
+                }
+            });
+
+            // Update Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2; // Gravity for particles
+                p.life -= deltaTime * 2;
+                p.size = Math.max(0, p.size - deltaTime * 5);
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            // State Machine Game
+            if (gamePhase === 'jumping') {
+                frog.jumpProgress += deltaTime * 2; // Kecepatan lompat
+                if (frog.jumpProgress >= 1) {
+                    frog.jumpProgress = 1;
+                    frog.x = frog.targetX;
+                    frog.y = frog.targetY;
+                    
+                    // Cek Jawaban
+                    if (frog.targetLeaf.isCorrect) {
+                        playCorrectSound();
+                        createParticles(frog.x, frog.y, '#FDE047'); // Yellow sparkles
+                        score += 10;
+                        updateHUD();
+                        gamePhase = 'correct_scroll';
+                    } else {
+                        playWrongSound();
+                        lives--;
+                        updateHUD();
+                        gamePhase = 'falling';
+                        frog.velocityY = -5; // Loncatan kecil ke belakang sblm jatuh
+                        frog.state = 'falling';
+                        
+                        // Efek Getar UI
+                        const app = document.getElementById('game-app');
+                        app.classList.remove('shake');
+                        void app.offsetWidth; // trigger reflow
+                        app.classList.add('shake');
+                    }
+                } else {
+                    // Animasi Arc / Parabola
+                    frog.x = frog.startX + (frog.targetX - frog.startX) * frog.jumpProgress;
+                    // Linear Y interpolasi dikurangi fungsi Sinus untuk lengkungan
+                    const linearY = frog.startY + (frog.targetY - frog.startY) * frog.jumpProgress;
+                    const jumpHeight = 120;
+                    frog.y = linearY - Math.sin(frog.jumpProgress * Math.PI) * jumpHeight;
+                }
+            } 
+            else if (gamePhase === 'correct_scroll') {
+                // Scroll layar ke bawah (menggeser semua elemen ke bawah)
+                const scrollSpeed = 400 * deltaTime;
+                const targetFrogY = height - 105;
+                
+                frog.y += scrollSpeed;
+                baseLeaf.y += scrollSpeed;
+                optionLeaves.forEach(l => l.y += scrollSpeed);
+
+                if (frog.y >= targetFrogY) {
+                    // Selesai scroll
+                    frog.y = targetFrogY;
+                    baseLeaf = { x: frog.x, y: frog.y + 25, width: 160, height: 60 }; // Daun baru jadi base
+                    frog.state = 'idle';
+                    loadNextQuestion();
+                    gamePhase = 'idle';
+                }
+            }
+            else if (gamePhase === 'falling') {
+                frog.y += frog.velocityY;
+                frog.velocityY += 15 * deltaTime; // Gravity
+                
+                if (frog.y > height - 40) {
+                    // Kecebur
+                    playSplashSound();
+                    createParticles(frog.x, height - 40, '#38BDF8'); // Splash biru
+                    
+                    if (lives <= 0) {
+                        gameOver();
+                    } else {
+                        // Reset posisi untuk mencoba lagi di soal yang sama
+                        setTimeout(() => {
+                            frog.x = baseLeaf.x;
+                            frog.y = baseLeaf.y - 25;
+                            frog.state = 'idle';
+                            frog.velocityY = 0;
+                            // Hapus daun yang salah
+                            frog.targetLeaf.active = false;
+                            gamePhase = 'idle';
+                        }, 800);
+                        gamePhase = 'wait_respawn'; // state sementara
+                    }
+                }
+            }
+        }
+
+        // --- MAIN RENDER ---
+        let lastTime = 0;
+        function gameLoop(timestamp = 0) {
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Batasi deltaTime agar jika tab tidak aktif, animasi tidak loncat jauh
+            if (deltaTime < 0.1) {
+                update(deltaTime);
+            }
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Gambar Daun Dasar
+            if (gamePhase !== 'start') {
+                drawLeaf(ctx, baseLeaf.x, baseLeaf.y, baseLeaf.width, baseLeaf.height, "", true);
+            }
+
+            // Gambar Daun Opsi
+            optionLeaves.forEach(leaf => {
+                if (leaf.active) {
+                    drawLeaf(ctx, leaf.x, leaf.y, leaf.width, leaf.height, leaf.text, false, leaf.offsetYAnim);
+                }
+            });
+
+            // Gambar Katak (kecuali dia lg respawn)
+            if (gamePhase !== 'wait_respawn' && gamePhase !== 'start') {
+                drawFrog(ctx, frog.x, frog.y, frog.size);
+            }
+
+            drawEnvironment(ctx);
+            drawWater(ctx);
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- UTILITIES ---
+        function toggleFullScreen() {
+            const elem = document.documentElement;
+            if (!document.fullscreenElement) {
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { /* Safari */
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { /* IE11 */
+                    elem.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) { /* Safari */
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) { /* IE11 */
+                    document.msExitFullscreen();
+                }
+            }
+        }
+
+        // Mulai background loop (sekedar render idle sebelum start)
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
